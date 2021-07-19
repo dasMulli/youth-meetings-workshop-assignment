@@ -1,0 +1,90 @@
+﻿@page "/workshops"
+@using WorkshopAssignmentApp.Data
+@inject WorkshopAssignmentDbContext DbContext
+
+<MudText Typo="Typo.h1" Align="Align.Center">Workshops</MudText>
+
+<MudTable Items="@DbContext.Workshops" CanCancelEdit="true" RowEditPreview="BackupBeforeEdit" RowEditCommit="CommitEdit" RowEditCancel="CancelEdit" @ref="table">
+    <HeaderContent>
+        <MudTh><MudTableSortLabel InitialDirection="SortDirection.Ascending" SortBy="new Func<Workshop, object>(x=>x.Name)">Name</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<Workshop, object>(x=>x.MinParticipants)">Minimale Teilnehmer*innenanzahl</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<Workshop, object>(x=>x.MaxParticipants)">Maximale Teilnehmer*innenanzahl</MudTableSortLabel></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Name">@context.Name</MudTd>
+        <MudTd DataLabel="Minimale Teilnehmer*innenanzahl">@context.MinParticipants</MudTd>
+        <MudTd DataLabel="Maximale Teilnehmer*innenanzahl">@context.MaxParticipants</MudTd>
+    </RowTemplate>
+    <RowEditingTemplate>
+        <MudTd DataLabel="Name">
+            <MudTextField @bind-Value="@context.Name" Required />
+        </MudTd>
+        <MudTd DataLabel="Minimale Teilnehmer*innenanzahl">
+            <MudNumericField @bind-Value="@context.MinParticipants" Required Min="1" />
+        </MudTd>
+        <MudTd DataLabel="Maximale Teilnehmer*innenanzahl">
+            <MudNumericField @bind-Value="@context.MaxParticipants" Required Min="1" />
+        </MudTd>
+    </RowEditingTemplate>
+    <FooterContent>
+        <MudTh><MudFab Icon="@Icons.Material.Filled.Add" Color="Color.Primary" Disabled="@addingItemsDisabled" Label="Workshop hinzufügen" aria-label="add" OnClick="AddNewWorkshop"></MudFab></MudTh>
+    </FooterContent>
+</MudTable>
+
+@code {
+    private MudTable<Workshop> table = null!;
+    private readonly Workshop backupWorkshop = new Workshop();
+    private bool addingItemsDisabled = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+    }
+
+    private void AddNewWorkshop(MouseEventArgs e)
+    {
+        var newWorkshop = new Workshop { Name = "Neuer Workshop" };
+        DbContext.Add(newWorkshop);
+        DbContext.SaveChanges();
+        table.SetEditingItem(newWorkshop);
+        BackupBeforeEdit(newWorkshop);
+    }
+
+    private void BackupBeforeEdit(object item)
+    {
+        addingItemsDisabled = true;
+
+        if (item is not Workshop workshop)
+        {
+            return;
+        }
+
+        backupWorkshop.Name = workshop.Name;
+        backupWorkshop.MinParticipants = workshop.MinParticipants;
+        backupWorkshop.MaxParticipants = workshop.MaxParticipants;
+    }
+
+    private void CommitEdit(object item)
+    {
+        addingItemsDisabled = false;
+        DbContext.SaveChanges();
+        this.StateHasChanged(); // Workaround for button disabled binding
+    }
+
+    private void CancelEdit(object item)
+    {
+        addingItemsDisabled = false;
+        this.StateHasChanged(); // Workaround for button disabled binding
+
+        if (item is not Workshop workshop)
+        {
+            return;
+        }
+        
+        workshop.Name = backupWorkshop.Name;
+        workshop.MinParticipants = backupWorkshop.MinParticipants;
+        workshop.MaxParticipants = backupWorkshop.MaxParticipants;
+
+        DbContext.ChangeTracker.AcceptAllChanges();
+    }
+}

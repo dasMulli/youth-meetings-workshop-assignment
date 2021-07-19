@@ -1,0 +1,134 @@
+﻿@page "/participants"
+@using WorkshopAssignmentApp.Data
+@inject WorkshopAssignmentDbContext DbContext
+
+<MudText Typo="Typo.h1" Align="Align.Center">Teilnehmer*innen</MudText>
+
+<MudTable Items="@DbContext.Participants" Dense="true" CanCancelEdit="true" RowEditPreview="BackupBeforeEdit" RowEditCommit="CommitEdit" RowEditCancel="CancelEdit" @ref="table">
+    <HeaderContent>
+        <MudTh><MudTableSortLabel InitialDirection="SortDirection.Ascending" SortBy="new Func<Participant, object>(x=>x.Name)">Name</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<Participant, object?>(x=>x.FirstChoice?.Name)">Erste Wahl</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<Participant, object?>(x=>x.SecondChoice?.Name)">Zweite Wahl</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<Participant, object?>(x=>x.ThirdChoice?.Name)">Dritte Wahl</MudTableSortLabel></MudTh>
+        <MudTh>Überschreibung Assoziationskosten 1. Wahl</MudTh>
+        <MudTh>Überschreibung Assoziationskosten 2. Wahl</MudTh>
+        <MudTh>Überschreibung Assoziationskosten 3. Wahl</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Name">@context.Name</MudTd>
+        <MudTd DataLabel="Erste Wahl">@context.FirstChoice?.Name</MudTd>
+        <MudTd DataLabel="Zweite Wahl">@context.SecondChoice?.Name</MudTd>
+        <MudTd DataLabel="Dritte Wahl">@context.ThirdChoice?.Name</MudTd>
+        <MudTd DataLabel="Überschreibung Assoziationskosten 1. Wahl">@context.FirstChoiceAssignmentCostOverride</MudTd>
+        <MudTd DataLabel="Überschreibung Assoziationskosten 2. Wahl">@context.SecondChoiceAssignmentCostOverride</MudTd>
+        <MudTd DataLabel="Überschreibung Assoziationskosten 3. Wahl">@context.ThirdChoiceAssignmentCostOverride</MudTd>
+    </RowTemplate>
+    <RowEditingTemplate>
+        <MudTd DataLabel="Name">
+            <MudTextField @bind-Value="@context.Name" Required />
+        </MudTd>
+        <MudTd DataLabel="Erste Wahl">
+            <MudSelect @bind-Value="@context.FirstChoice">
+                @foreach (var workshop in DbContext.Workshops.OrderBy(ws => ws.Name))
+                {
+                    <MudSelectItem Value="@workshop">@workshop.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudTd>
+        <MudTd DataLabel="Zweite Wahl">
+            <MudSelect @bind-Value="@context.SecondChoice">
+                @foreach (var workshop in DbContext.Workshops.OrderBy(ws => ws.Name))
+                {
+                    <MudSelectItem Value="@workshop">@workshop.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudTd>
+        <MudTd DataLabel="Dritte Wahl">
+            <MudSelect @bind-Value="@context.ThirdChoice">
+                @foreach (var workshop in DbContext.Workshops.OrderBy(ws => ws.Name))
+                {
+                    <MudSelectItem Value="@workshop">@workshop.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudTd>
+        <MudTd DataLabel="Überschreibung Assoziationskosten 1. Wahl">
+            <MudNumericField @bind-Value="@context.FirstChoiceAssignmentCostOverride" Format="F1" Min="0.0f" Step="1.0f" />
+        </MudTd>
+        <MudTd DataLabel="Überschreibung Assoziationskosten 2. Wahl">
+            <MudNumericField @bind-Value="@context.SecondChoiceAssignmentCostOverride" Format="F1" Min="0.0f" Step="1.0f" />
+        </MudTd>
+        <MudTd DataLabel="Überschreibung Assoziationskosten 3. Wahl">
+            <MudNumericField @bind-Value="@context.ThirdChoiceAssignmentCostOverride" Format="F1" Min="0.0f" Step="1.0f" />
+        </MudTd>
+    </RowEditingTemplate>
+    <FooterContent>
+        <MudTh><MudFab Icon="@Icons.Material.Filled.Add" Color="Color.Primary" Disabled="addingItemsDisabled" Label="Workshop hinzufügen" aria-label="add" OnClick="AddNewWorkshop"></MudFab></MudTh>
+    </FooterContent>
+</MudTable>
+
+
+@code {
+    private MudTable<Participant> table = null!;
+    private readonly Participant backupParticipant = new Participant();
+    private bool addingItemsDisabled = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+    }
+
+    private void AddNewWorkshop(MouseEventArgs e)
+    {
+        var newParticipant = new Participant { Name = "Neue*r Teilnehmer*in" };
+        DbContext.Add(newParticipant);
+        DbContext.SaveChanges();
+        table.SetEditingItem(newParticipant);
+        BackupBeforeEdit(newParticipant);
+    }
+
+    private void BackupBeforeEdit(object item)
+    {
+        addingItemsDisabled = true;
+
+        if (item is not Participant participant)
+        {
+            return;
+        }
+
+        backupParticipant.Name = participant.Name;
+        backupParticipant.FirstChoice = participant.FirstChoice;
+        backupParticipant.SecondChoice = participant.SecondChoice;
+        backupParticipant.ThirdChoice = participant.ThirdChoice;
+        backupParticipant.FirstChoiceAssignmentCostOverride = participant.FirstChoiceAssignmentCostOverride;
+        backupParticipant.SecondChoiceAssignmentCostOverride = participant.SecondChoiceAssignmentCostOverride;
+        backupParticipant.ThirdChoiceAssignmentCostOverride = participant.ThirdChoiceAssignmentCostOverride;
+    }
+
+    private void CommitEdit(object item)
+    {
+        DbContext.SaveChanges();
+        addingItemsDisabled = false;
+        this.StateHasChanged(); // Workaround for button disabled binding
+    }
+
+    private void CancelEdit(object item)
+    {
+        addingItemsDisabled = false;
+        this.StateHasChanged(); // Workaround for button disabled binding
+
+        if (item is not Participant participant)
+        {
+            return;
+        }
+        
+        participant.Name = backupParticipant.Name;
+        participant.FirstChoice = backupParticipant.FirstChoice;
+        participant.SecondChoice = backupParticipant.SecondChoice;
+        participant.ThirdChoice = backupParticipant.ThirdChoice;
+        participant.FirstChoiceAssignmentCostOverride = backupParticipant.FirstChoiceAssignmentCostOverride;
+        participant.SecondChoiceAssignmentCostOverride = backupParticipant.SecondChoiceAssignmentCostOverride;
+        participant.ThirdChoiceAssignmentCostOverride = backupParticipant.ThirdChoiceAssignmentCostOverride;
+
+        DbContext.ChangeTracker.AcceptAllChanges();
+    }
+}
