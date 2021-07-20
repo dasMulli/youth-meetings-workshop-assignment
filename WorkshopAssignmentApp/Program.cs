@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using MudBlazor.Services;
 using WorkshopAssignmentApp.Data;
 using Microsoft.EntityFrameworkCore;
+using WorkshopAssignmentApp.Assignment;
 
 namespace WorkshopAssignmentApp
 {
@@ -26,7 +27,8 @@ namespace WorkshopAssignmentApp
                 .AddDbContext<WorkshopAssignmentDbContext>(
                     options => options.UseInMemoryDatabase("WorkshopAssignment"),
                     ServiceLifetime.Transient
-                );
+                )
+                .AddTransient<AssignmentGenerator>();
 
             await builder.Build().RunAsync();
         }

@@ -1,5 +1,10 @@
 ﻿@page "/"
+@using ClosedXML.Excel
+@using System.IO
+@using Microsoft.Extensions.DependencyInjection
+@using WorkshopAssignmentApp.Data
 @inject ISnackbar Snackbar
+@inject IServiceProvider serviceProvider;
 
 <style>
     .drag-drop-zone {
@@ -7,7 +12,8 @@
         align-items: center;
         justify-content: center;
         transition: all .4s;
-        min-height: 400px;
+        min-height: 200px;
+        position: relative;
     }
 
     .drag-drop-input {
@@ -42,52 +48,37 @@
             <MudCardContent>
 
                 <MudPaper @ondragenter="@(()=>_dragEnterStyle="drag-enter")"
-                          @ondragleave="@(()=>_dragEnterStyle=null)"
-                          @ondragend="@(()=>_dragEnterStyle=null)"
+                          @ondragleave="@(()=>_dragEnterStyle="")"
+                          @ondragend="@(()=>_dragEnterStyle="")"
                           Class=@("drag-drop-zone "+ _dragEnterStyle)>
 
                     <InputFile OnChange="OnInputFileChanged" class="drag-drop-input" />
 
-                    @if (fileNames.Count() == 0)
+                    @if (fileToImport is null)
                     {
                         <MudText Typo="Typo.h6" Align="Align.Center">Excel-Datei hier ablegen oder klicken</MudText>
                     }
                     else
                     {
                         <MudList Style="padding:2em;width:100%;" Dense="true">
-                            @foreach (var file in fileNames)
-                            {
-                                <MudListItem @key="@file">
-                                    <MudChip Color="Color.Dark"
+                            <MudListItem @key="@fileToImport.Name">
+                                <MudChip Color="Color.Dark"
                                      Style="width:60px; overflow:hidden;"
-                                     Text="@(file.Split(".").Last())" />
-                                    @file
-                                </MudListItem>
-                            }
+                                     Text="@(fileToImport.Name.Split(".").Last())" />
+                                @fileToImport.Name
+                            </MudListItem>
                         </MudList>
                     }
                 </MudPaper>
 
-                <MudGrid Justify="Justify.Center" Spacing="4">
+                <MudGrid Justify="Justify.Center" Spacing="4" Class="mt-0">
                     <MudItem>
-                        <MudButton OnClick="Upload" Disabled="@(!fileNames.Any())" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FileUpload" Variant="Variant.Filled">Importieren</MudButton>
+                        <MudButton OnClick="Import" Disabled="@(fileToImport is null)" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FileUpload" Variant="Variant.Filled">Importieren</MudButton>
                     </MudItem>
                     <MudItem>
-                        <MudButton OnClick="@fileNames.Clear" Disabled="@(!fileNames.Any())" Color="Color.Error" Variant="Variant.Filled">Zurücksetzen</MudButton>
+                        <MudButton OnClick="@(() => fileToImport = null)" Disabled="@(fileToImport is null)" Color="Color.Error" Variant="Variant.Filled">Zurücksetzen</MudButton>
                     </MudItem>
                 </MudGrid>
-            </MudCardContent>
-        </MudCard>
-    </MudItem>
-    <MudItem xs="12" sm="6" md="4">
-        <MudCard Elevation="25" Class="rounded-lg pb-4">
-            <MudCardHeader>
-                <CardHeaderContent>
-                    <MudText Typo="Typo.h5" Align="Align.Center">Datenexport</MudText>
-                </CardHeaderContent>
-            </MudCardHeader>
-            <MudCardContent>
-
             </MudCardContent>
         </MudCard>
     </MudItem>
@@ -99,7 +90,21 @@
                 </CardHeaderContent>
             </MudCardHeader>
             <MudCardContent>
-                <MudButton Color="Color.Primary" StartIcon="@Icons.Material.Filled.FileDownload">Excel-Template herunterladen</MudButton>
+                <a href="/Workshop-Excel-Template.xlsx" target="_top">
+                    <MudButton Color="Color.Primary" StartIcon="@Icons.Material.Filled.FileDownload">Excel-Template herunterladen</MudButton>
+                </a>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="4">
+        <MudCard Elevation="25" Class="rounded-lg pb-4">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h5" Align="Align.Center">Datenexport</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudText Typo="Typo.body1" Align="Align.Center">// not implemented</MudText>
             </MudCardContent>
         </MudCard>
     </MudItem>
@@ -107,16 +112,163 @@
 
 @code {
     string _dragEnterStyle = string.Empty;
-    IList<string> fileNames = new List<string>();
+    IBrowserFile? fileToImport = null;
+
     void OnInputFileChanged(InputFileChangeEventArgs e)
     {
-        var files = e.GetMultipleFiles();
-        fileNames = files.Select(f => f.Name).ToList();
+        fileToImport = e.File;
     }
-    void Upload()
+
+    async void Import()
     {
-        //Upload the files here
+        if (fileToImport is null)
+        {
+            return;   //Upload the files here
+        }
+
+        using var dbContext = serviceProvider.GetRequiredService<WorkshopAssignmentDbContext>();
+
         Snackbar.Configuration.PositionClass = Defaults.Classes.Position.TopCenter;
-        Snackbar.Add("TODO: Upload your files!", Severity.Normal);
+        var importingSnackbar = Snackbar.Add("Importiere...", Severity.Info, cfg =>
+        {
+            cfg.ShowCloseIcon = false;
+            cfg.CloseAfterNavigation = false;
+            cfg.VisibleStateDuration = int.MaxValue;
+        });
+
+        var file = fileToImport;
+        fileToImport = null;
+        _dragEnterStyle = string.Empty;
+
+        try
+        {
+            // we need to copy the file to memory since the Open/ClosedXML libs perform sync reads
+            // which are not supported by WASM on memory files
+            using var memoryStream = new MemoryStream((int)file.Size);
+            {
+                await using var stream = file.OpenReadStream();
+                await stream.CopyToAsync(memoryStream);
+            }
+            memoryStream.Position = 0;
+            using var workbook = new XLWorkbook(memoryStream);
+
+            if (!workbook.TryGetWorksheet("Konfiguration", out var configWorksheet))
+            {
+                Snackbar.Add("Worksheet \"Konfiguration\" nicht gefunden", Severity.Error);
+                return;
+            }
+
+            var workshopsTable = workbook.Table("Workshops");
+            if (workshopsTable is null)
+            {
+                Snackbar.Add("Tabelle \"Workshops\" nicht gefunden", Severity.Error);
+                return;
+            }
+
+            var participantsTable = workbook.Table("Participants");
+            if (workshopsTable is null)
+            {
+                Snackbar.Add("Tabelle \"Participants\" nicht gefunden", Severity.Error);
+                return;
+            }
+
+            dbContext.Participants.RemoveRange(dbContext.Participants.ToList());
+            dbContext.Workshops.RemoveRange(dbContext.Workshops.ToList());
+            await dbContext.SaveChangesAsync();
+
+            var workshopsDict = new Dictionary<string, Workshop>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var row in workshopsTable.Rows().Skip(1))
+            {
+                if (row.Cell(1).IsEmpty())
+                {
+                    continue;
+                }
+
+                var workshop = new Workshop
+                {
+                    Name = row.Cell(1).GetValue<string>().Trim(),
+                    MinParticipants = row.Cell(2).GetValue<int>(),
+                    MaxParticipants = row.Cell(3).GetValue<int>()
+                };
+
+                if (workshop is { Name: "" } or { MinParticipants: < 0 } or { MaxParticipants: <= 0 })
+                {
+                    Snackbar.Add($"Workshop {workshop.Name} (Zeile {row.RowNumber()}) hat eine ungültige Konfiguration", Severity.Error);
+                    return;
+                }
+
+                dbContext.Add(workshop);
+                workshopsDict[workshop.Name] = workshop;
+            }
+            await dbContext.SaveChangesAsync();
+
+            foreach (var row in participantsTable.Rows().Skip(1))
+            {
+                if (row.Cell(1).IsEmpty())
+                {
+                    continue;
+                }
+
+                var name = row.Cell(1).GetValue<string>().Trim();
+                if (name is "")
+                {
+                    continue;
+                }
+                
+                var firstChoiceName = row.Cell(2).GetValue<string>().Trim();
+                if (!workshopsDict.TryGetValue(firstChoiceName, out var firstChoice))
+                {
+                    Snackbar.Add($"Teilnehmer*in {name} (Zeile {row.RowNumber()}) hat eine ungültige erste Wahl", Severity.Error);
+                    return;
+                }
+                var secondChoiceName = row.Cell(3).GetValue<string>().Trim();
+                if (!workshopsDict.TryGetValue(secondChoiceName, out var secondChoice))
+                {
+                    Snackbar.Add($"Teilnehmer*in {name} (Zeile {row.RowNumber()}) hat eine ungültige zweite Wahl", Severity.Error);
+                    return;
+                }
+                var thirdChoiceName = row.Cell(4).GetValue<string>().Trim();
+                if (!workshopsDict.TryGetValue(thirdChoiceName, out var thirdChoice))
+                {
+                    Snackbar.Add($"Teilnehmer*in {name} (Zeile {row.RowNumber()}) hat eine ungültige dritte Wahl", Severity.Error);
+                    return;
+                }
+
+                var participant = new Participant
+                {
+                    Name = name,
+                    FirstChoice = firstChoice,
+                    SecondChoice = secondChoice,
+                    ThirdChoice = thirdChoice,
+                    FirstChoiceAssignmentCostOverride = row.Cell(5).GetValue<float?>(),
+                    SecondChoiceAssignmentCostOverride = row.Cell(6).GetValue<float?>(),
+                    ThirdChoiceAssignmentCostOverride = row.Cell(7).GetValue<float?>()
+                };
+
+                if (participant is {FirstChoiceAssignmentCostOverride: <0}
+                    or { SecondChoiceAssignmentCostOverride: <0 }
+                    or { ThirdChoiceAssignmentCostOverride: <0 })
+                {
+                    Snackbar.Add($"Teilnehmer*in {name} (Zeile {row.RowNumber()}) hat eine ungültige Assoziationsgewichtung", Severity.Error);
+                    return;
+                }
+
+                dbContext.Add(participant);
+            }
+
+            await dbContext.SaveChangesAsync();
+
+            Snackbar.Add("Excel-Import erfolgreich", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Fehler beim Importieren: {ex.Message}\n{ex.StackTrace}", Severity.Error);
+            throw;
+        }
+        finally
+        {
+            Snackbar.Remove(importingSnackbar);
+        }
     }
 }

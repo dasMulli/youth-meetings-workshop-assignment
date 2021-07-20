@@ -1,17 +1,42 @@
 ﻿@page "/assignments"
+@using WorkshopAssignmentApp.Assignment
+@inject ISnackbar Snackbar
+@inject AssignmentGenerator AssignmentGenerator
 
+<MudText Typo="Typo.h1" Align="Align.Center">Workshop-Zuteilung</MudText>
 
-<MudText Typo="Typo.h1">Zuteilungen zu den Workshops</MudText>
+<MudButton Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" Variant="Variant.Filled" OnClick="OnGenerate">Zuteilungen generieren</MudButton>
 
-<p role="status">Current count: @currentCount</p>
-
-<button class="btn btn-primary" @onclick="IncrementCount">Click me</button>
+@if (assignments is not null)
+{
+    <MudTable Items="@assignments" Dense="true">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel InitialDirection="SortDirection.Ascending" SortBy="new Func<Assignment, object>(x=>x.Workshop.Name)">Workshop</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<Assignment, object>(x=>x.Participant.Name)">Teilnehmer*in</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<Assignment, object?>(x=>x.ChoiceNumber)">Wahl Nr.</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<Assignment, object?>(x=>x.AssignmentCost)">Assoziationskosten</MudTableSortLabel></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Workshop">@context.Workshop.Name</MudTd>
+            <MudTd DataLabel="Teilnehmer*in">@context.Participant.Name</MudTd>
+            <MudTd DataLabel="Wahl Nr.">@context.ChoiceNumber</MudTd>
+            <MudTd DataLabel="Assoziationskosten">@context.AssignmentCost</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
 
 @code {
-    private int currentCount = 0;
+    private IList<Assignment>? assignments;
 
-    private void IncrementCount()
+    void OnGenerate(MouseEventArgs e)
     {
-        currentCount++;
+        try
+        {
+            AssignmentGenerator.TryGenerateAssignments(out assignments);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Fehler beim Berechnen: {ex.Message}\n{ex.StackTrace}", Severity.Error);
+        }
     }
 }
